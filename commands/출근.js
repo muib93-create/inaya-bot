@@ -2,16 +2,23 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const db = require("../database");
 const workStatus = require("../workStatus");
 
+const {
+    now,
+    getTodayKST,
+    formatTimeKST,
+    addHours,
+} = require("../utils/time");
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("출근")
         .setDescription("현재 시간으로 출근을 등록합니다"),
 
     async execute(interaction) {
-        const now = new Date();
+        const current = now();
 
-        const workDate = now.toISOString().slice(0, 10);
-        const startTime = now.toISOString();
+        const workDate = getTodayKST(current);
+        const startTime = current.toISOString();
 
         const username = interaction.user.username;
         const userId = interaction.user.id;
@@ -38,21 +45,18 @@ module.exports = {
 
         workStatus.updateStatus(interaction.client).catch(console.error);
 
-        const end = new Date(now);
-        end.setHours(end.getHours() + 9);
+        const end = addHours(current, 9);
 
-        const startHour = String(now.getHours()).padStart(2, "0");
-        const startMinute = String(now.getMinutes()).padStart(2, "0");
-        const endHour = String(end.getHours()).padStart(2, "0");
-        const endMinute = String(end.getMinutes()).padStart(2, "0");
+        const start = formatTimeKST(current);
+        const finish = formatTimeKST(end);
 
         const embed = new EmbedBuilder()
             .setColor(0x57F287)
             .setTitle("🟢 출근 완료")
             .setDescription("오늘도 힘내서 일해봅시다.")
             .addFields(
-                { name: "출근 시간", value: `${startHour}:${startMinute}`, inline: true },
-                { name: "퇴근 예정", value: `${endHour}:${endMinute}`, inline: true }
+                { name: "출근 시간", value: start, inline: true },
+                { name: "퇴근 예정", value: finish, inline: true }
             )
             .setFooter({ text: "이나야 일해라" })
             .setTimestamp();
