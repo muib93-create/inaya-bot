@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const db = require("../database");
 const workStatus = require("../workStatus");
 const { createWorkButtons } = require("../utils/workButtons");
+const { updatePanel } = require("../utils/panelManager");
 
 const {
     now,
@@ -47,7 +48,11 @@ module.exports = {
             ) VALUES (?, ?, ?, ?, 'working')
         `).run(userId, username, workDate, startTime);
 
+        // 상태 채널 갱신
         workStatus.updateStatus(interaction.client).catch(console.error);
+
+        // 근태 패널 갱신
+        updatePanel(interaction.client).catch(console.error);
 
         const end = addHours(current, 9);
 

@@ -20,4 +20,12 @@ CREATE TABLE IF NOT EXISTS work_log (
 );
 `);
 
+// 봇 설정 저장 테이블
+db.exec(`
+CREATE TABLE IF NOT EXISTS bot_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+`);
+
 module.exports = db;
