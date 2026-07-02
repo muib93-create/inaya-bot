@@ -1,6 +1,14 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const db = require("../database");
 
+const {
+    now,
+    getTodayKST,
+    formatTimeKST,
+    addHours,
+    formatMinutes,
+} = require("../utils/time");
+
 function createProgressBar(percent) {
     const totalBlocks = 10;
     const filledBlocks = Math.round((percent / 100) * totalBlocks);
@@ -16,8 +24,8 @@ module.exports = {
 
     async execute(interaction) {
         const userId = interaction.user.id;
-        const now = new Date();
-        const workDate = now.toISOString().slice(0, 10);
+        const current = now();
+        const workDate = getTodayKST(current);
 
         const record = db.prepare(`
             SELECT *
@@ -33,20 +41,22 @@ module.exports = {
         }
 
         const start = new Date(record.start_time);
-        const end = new Date(start);
-        end.setHours(end.getHours() + 9);
+        const end = addHours(start, 9);
 
         const totalMinutes = 9 * 60;
-        const workedMinutes = Math.floor((now - start) / 1000 / 60);
-        const progressPercent = Math.min(100, Math.max(0, Math.floor((workedMinutes / totalMinutes) * 100)));
+        const workedMinutes = Math.floor((current - start) / 1000 / 60);
+        const progressPercent = Math.min(
+            100,
+            Math.max(0, Math.floor((workedMinutes / totalMinutes) * 100))
+        );
 
-        const diff = end - now;
+        const remainMinutes = Math.floor((end - current) / 1000 / 60);
 
-        const startText = `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`;
-        const endText = `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`;
+        const startText = formatTimeKST(start);
+        const endText = formatTimeKST(end);
         const progressBar = createProgressBar(progressPercent);
 
-        if (diff <= 0) {
+        if (remainMinutes <= 0) {
             const embed = new EmbedBuilder()
                 .setColor(0xED4245)
                 .setTitle("🔴 퇴근 시간이 지났습니다")
@@ -62,15 +72,12 @@ module.exports = {
             return;
         }
 
-        const hours = Math.floor(diff / 1000 / 60 / 60);
-        const minutes = Math.floor((diff / 1000 / 60) % 60);
-
         const embed = new EmbedBuilder()
             .setColor(0xFEE75C)
             .setTitle("⏰ 퇴근까지")
             .setDescription(`진행도\n${progressBar} ${progressPercent}%`)
             .addFields(
-                { name: "남은 시간", value: `${hours}시간 ${minutes}분`, inline: false },
+                { name: "남은 시간", value: formatMinutes(remainMinutes), inline: false },
                 { name: "출근 시간", value: startText, inline: true },
                 { name: "퇴근 예정", value: endText, inline: true }
             )
