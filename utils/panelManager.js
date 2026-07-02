@@ -7,6 +7,14 @@ const {
 
 const db = require("../database");
 
+const {
+    now,
+    getTodayKST,
+    formatTimeKST,
+    addHours,
+    formatMinutes,
+} = require("./time");
+
 function getSetting(key) {
     const row = db.prepare(`
         SELECT value FROM bot_settings
@@ -24,36 +32,141 @@ function setSetting(key, value) {
     `).run(key, value);
 }
 
+function getTodayRecords() {
+    const current = now();
+    const today = getTodayKST(current);
+
+    const records = db.prepare(`
+        SELECT *
+        FROM work_log
+        WHERE work_date = ?
+        ORDER BY id DESC
+    `).all(today);
+
+    const latestByUser = new Map();
+
+    for (const record of records) {
+        if (!latestByUser.has(record.user_id)) {
+            latestByUser.set(record.user_id, record);
+        }
+    }
+
+    return Array.from(latestByUser.values());
+}
+
+function getPanelStats() {
+    const current = now();
+    const records = getTodayRecords();
+
+    const working = [];
+    const overtime = [];
+    const finished = [];
+
+    for (const record of records) {
+        if (record.status === "finished") {
+            finished.push(record);
+            continue;
+        }
+
+        if (record.status === "working") {
+            const start = new Date(record.start_time);
+            const expectedEnd = addHours(start, 9);
+
+            if (current >= expectedEnd) {
+                overtime.push(record);
+            } else {
+                working.push(record);
+            }
+        }
+    }
+
+    return {
+        working,
+        overtime,
+        finished,
+        total: records.length,
+    };
+}
+
+function createSimpleList(records, type) {
+    if (records.length === 0) return "없음";
+
+    const current = now();
+
+    return records
+        .slice(0, 8)
+        .map((record, index) => {
+            const start = new Date(record.start_time);
+            const startText = formatTimeKST(start);
+
+            if (type === "finished") {
+                const end = new Date(record.end_time);
+                const endText = formatTimeKST(end);
+                return `${index + 1}. **${record.username}** · ${startText} ~ ${endText}`;
+            }
+
+            if (type === "overtime") {
+                const expectedEnd = addHours(start, 9);
+                const overMinutes = Math.max(0, Math.floor((current - expectedEnd) / 1000 / 60));
+                return `${index + 1}. **${record.username}** · ${startText} 출근 · 초과 ${formatMinutes(overMinutes)}`;
+            }
+
+            const expectedEnd = addHours(start, 9);
+            return `${index + 1}. **${record.username}** · ${startText} 출근 · ${formatTimeKST(expectedEnd)} 퇴근예정`;
+        })
+        .join("\n");
+}
+
 function createPanelEmbed() {
+    const stats = getPanelStats();
+
     return new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle("📋 근태관리")
         .setDescription(
             [
-                "아래 버튼으로 근태를 관리하세요.",
+                "아래 버튼으로 출근/퇴근을 기록할 수 있습니다.",
                 "",
-                "🟢 출근",
-                "🔴 퇴근",
-                "⏰ 퇴근까지",
-                "📊 출근현황",
+                `🟢 **출근중** ${stats.working.length}명`,
+                `🌙 **야근중** ${stats.overtime.length}명`,
+                `🏠 **퇴근완료** ${stats.finished.length}명`,
             ].join("\n")
         )
-        .setFooter({ text: "이나야 일해라" })
+        .addFields(
+            {
+                name: "🟢 출근중",
+                value: createSimpleList(stats.working, "working"),
+                inline: false,
+            },
+            {
+                name: "🌙 야근중",
+                value: createSimpleList(stats.overtime, "overtime"),
+                inline: false,
+            },
+            {
+                name: "🏠 퇴근완료",
+                value: createSimpleList(stats.finished, "finished"),
+                inline: false,
+            }
+        )
+        .setFooter({ text: `총 ${stats.total}명 · 이나야 일해라` })
         .setTimestamp();
 }
 
 function createPanelButtons() {
+    const stats = getPanelStats();
+
     const row1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId("work_start")
             .setEmoji("🟢")
-            .setLabel("출근")
+            .setLabel(`출근`)
             .setStyle(ButtonStyle.Success),
 
         new ButtonBuilder()
             .setCustomId("work_end")
             .setEmoji("🔴")
-            .setLabel("퇴근")
+            .setLabel(`퇴근`)
             .setStyle(ButtonStyle.Danger)
     );
 
@@ -67,7 +180,7 @@ function createPanelButtons() {
         new ButtonBuilder()
             .setCustomId("work_status")
             .setEmoji("📊")
-            .setLabel("출근현황")
+            .setLabel(`출근현황 ${stats.total}`)
             .setStyle(ButtonStyle.Secondary)
     );
 
