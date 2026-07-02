@@ -1,20 +1,13 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const db = require("../database");
 
-function formatTime(date) {
-    return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-}
-
-function formatMinutes(totalMinutes) {
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-
-    if (hours <= 0) {
-        return `${minutes}분`;
-    }
-
-    return `${hours}시간 ${minutes}분`;
-}
+const {
+    now,
+    getTodayKST,
+    formatTimeKST,
+    addHours,
+    formatMinutes,
+} = require("../utils/time");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -22,8 +15,8 @@ module.exports = {
         .setDescription("오늘의 전체 출근 현황을 확인합니다"),
 
     async execute(interaction) {
-        const today = new Date().toISOString().slice(0, 10);
-        const now = new Date();
+        const current = now();
+        const today = getTodayKST(current);
 
         const records = db.prepare(`
             SELECT *
@@ -52,10 +45,9 @@ module.exports = {
 
             if (record.status === "working") {
                 const start = new Date(record.start_time);
-                const expectedEnd = new Date(start);
-                expectedEnd.setHours(expectedEnd.getHours() + 9);
+                const expectedEnd = addHours(start, 9);
 
-                if (now >= expectedEnd) {
+                if (current >= expectedEnd) {
                     overtime.push(record);
                 } else {
                     working.push(record);
@@ -68,10 +60,9 @@ module.exports = {
 
             return list.map((record, index) => {
                 const start = new Date(record.start_time);
-                const expectedEnd = new Date(start);
-                expectedEnd.setHours(expectedEnd.getHours() + 9);
+                const expectedEnd = addHours(start, 9);
 
-                return `${index + 1}. **${record.username}** - ${formatTime(start)} 출근 / ${formatTime(expectedEnd)} 퇴근예정`;
+                return `${index + 1}. **${record.username}** - ${formatTimeKST(start)} 출근 / ${formatTimeKST(expectedEnd)} 퇴근예정`;
             }).join("\n");
         }
 
@@ -80,12 +71,11 @@ module.exports = {
 
             return list.map((record, index) => {
                 const start = new Date(record.start_time);
-                const expectedEnd = new Date(start);
-                expectedEnd.setHours(expectedEnd.getHours() + 9);
+                const expectedEnd = addHours(start, 9);
 
-                const overMinutes = Math.floor((now - expectedEnd) / 1000 / 60);
+                const overMinutes = Math.max(0, Math.floor((current - expectedEnd) / 1000 / 60));
 
-                return `${index + 1}. **${record.username}** - ${formatTime(start)} 출근 / 초과 ${formatMinutes(overMinutes)}`;
+                return `${index + 1}. **${record.username}** - ${formatTimeKST(start)} 출근 / 초과 ${formatMinutes(overMinutes)}`;
             }).join("\n");
         }
 
@@ -96,7 +86,7 @@ module.exports = {
                 const start = new Date(record.start_time);
                 const end = new Date(record.end_time);
 
-                return `${index + 1}. **${record.username}** - ${formatTime(start)} ~ ${formatTime(end)} / ${formatMinutes(record.work_minutes)}`;
+                return `${index + 1}. **${record.username}** - ${formatTimeKST(start)} ~ ${formatTimeKST(end)} / ${formatMinutes(record.work_minutes)}`;
             }).join("\n");
         }
 
