@@ -11,9 +11,12 @@ const {
     now,
     getTodayKST,
     formatTimeKST,
-    addHours,
     formatMinutes,
 } = require("./time");
+
+const {
+    getUserWorkMinutes,
+} = require("./workConfig");
 
 const LINE = "━━━━━━━━━━━━━━━━━━━━";
 
@@ -34,9 +37,19 @@ function setSetting(key, value) {
     `).run(key, value);
 }
 
+function addMinutes(date, minutes) {
+    return new Date(date.getTime() + minutes * 60 * 1000);
+}
+
+function getExpectedEnd(record) {
+    const start = new Date(record.start_time);
+    const workMinutes = getUserWorkMinutes(record.user_id);
+
+    return addMinutes(start, workMinutes);
+}
+
 function getTodayRecords() {
-    const current = now();
-    const today = getTodayKST(current);
+    const today = getTodayKST(now());
 
     const records = db.prepare(`
         SELECT *
@@ -71,8 +84,7 @@ function getPanelStats() {
         }
 
         if (record.status === "working") {
-            const start = new Date(record.start_time);
-            const expectedEnd = addHours(start, 9);
+            const expectedEnd = getExpectedEnd(record);
 
             if (current >= expectedEnd) {
                 overtime.push(record);
@@ -91,13 +103,11 @@ function getPanelStats() {
 }
 
 async function getDisplayName(client, userId, fallbackName) {
-    const guildId = process.env.GUILD_ID;
-
     try {
-        const guild = await client.guilds.fetch(guildId);
+        const guild = await client.guilds.fetch(process.env.GUILD_ID);
         const member = await guild.members.fetch(userId);
         return member.displayName;
-    } catch (error) {
+    } catch {
         return fallbackName || userId;
     }
 }
@@ -107,6 +117,7 @@ async function createPersonLine(client, record, type) {
 
     const start = new Date(record.start_time);
     const startText = formatTimeKST(start);
+    const targetText = formatMinutes(getUserWorkMinutes(record.user_id));
 
     if (type === "finished") {
         const end = new Date(record.end_time);
@@ -121,20 +132,22 @@ async function createPersonLine(client, record, type) {
 
     if (type === "overtime") {
         const current = now();
-        const expectedEnd = addHours(start, 9);
+        const expectedEnd = getExpectedEnd(record);
         const overMinutes = Math.max(0, Math.floor((current - expectedEnd) / 1000 / 60));
 
         return [
             `👤 **${displayName}**`,
-            `└ ${startText} 출근 · 초과 ${formatMinutes(overMinutes)}`,
+            `└ ${startText} 출근 · ${formatTimeKST(expectedEnd)} 예정 · 초과 ${formatMinutes(overMinutes)}`,
+            `└ 목표 ${targetText}`,
         ].join("\n");
     }
 
-    const expectedEnd = addHours(start, 9);
+    const expectedEnd = getExpectedEnd(record);
 
     return [
         `👤 **${displayName}**`,
         `└ ${startText} 출근 · ${formatTimeKST(expectedEnd)} 퇴근예정`,
+        `└ 목표 ${targetText}`,
     ].join("\n");
 }
 
@@ -145,8 +158,8 @@ async function createList(client, records, type) {
 
     const lines = [];
 
-    for (const [index, record] of records.slice(0, 8).entries()) {
-        lines.push(await createPersonLine(client, record, type, index));
+    for (const record of records.slice(0, 8)) {
+        lines.push(await createPersonLine(client, record, type));
     }
 
     const shown = lines.join("\n");
@@ -255,7 +268,7 @@ async function createOrUpdatePanel(channel) {
 
             await savedMessage.edit(payload);
             return savedMessage;
-        } catch (error) {
+        } catch {
             console.log("기존 근태 패널을 찾지 못해 새로 생성합니다.");
         }
     }
