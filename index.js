@@ -113,6 +113,24 @@ client.once("clientReady", () => {
     }, 60 * 1000);
 });
 
+function makeButtonReplyEphemeral(interaction) {
+    const originalReply = interaction.reply.bind(interaction);
+
+    interaction.reply = async (options) => {
+        if (typeof options === "string") {
+            return originalReply({
+                content: options,
+                ephemeral: true,
+            });
+        }
+
+        return originalReply({
+            ...options,
+            ephemeral: true,
+        });
+    };
+}
+
 client.on("interactionCreate", async interaction => {
     try {
         if (interaction.isButton()) {
@@ -128,6 +146,8 @@ client.on("interactionCreate", async interaction => {
 
             const command = client.commands.get(commandName);
             if (!command) return;
+
+            makeButtonReplyEphemeral(interaction);
 
             await command.execute(interaction);
             return;
