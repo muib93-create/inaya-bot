@@ -2,6 +2,13 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const db = require("../database");
 const workStatus = require("../workStatus");
 
+const {
+    now,
+    getTodayKST,
+    formatTimeKST,
+    formatMinutes,
+} = require("../utils/time");
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("퇴근")
@@ -9,8 +16,8 @@ module.exports = {
 
     async execute(interaction) {
         const userId = interaction.user.id;
-        const now = new Date();
-        const workDate = now.toISOString().slice(0, 10);
+        const current = now();
+        const workDate = getTodayKST(current);
 
         const record = db.prepare(`
             SELECT * FROM work_log
@@ -23,7 +30,7 @@ module.exports = {
         }
 
         const start = new Date(record.start_time);
-        const end = now;
+        const end = current;
         const workMinutes = Math.floor((end - start) / 1000 / 60);
 
         db.prepare(`
@@ -36,11 +43,8 @@ module.exports = {
 
         workStatus.updateStatus(interaction.client).catch(console.error);
 
-        const startText = `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`;
-        const endText = `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`;
-
-        const hours = Math.floor(workMinutes / 60);
-        const minutes = workMinutes % 60;
+        const startText = formatTimeKST(start);
+        const endText = formatTimeKST(end);
 
         const embed = new EmbedBuilder()
             .setColor(0xED4245)
@@ -49,7 +53,7 @@ module.exports = {
             .addFields(
                 { name: "출근 시간", value: startText, inline: true },
                 { name: "퇴근 시간", value: endText, inline: true },
-                { name: "총 근무", value: `${hours}시간 ${minutes}분`, inline: false }
+                { name: "총 근무", value: formatMinutes(workMinutes), inline: false }
             )
             .setFooter({ text: "이나야 일해라" })
             .setTimestamp();
