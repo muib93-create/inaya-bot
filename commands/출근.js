@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const db = require("../database");
 const workStatus = require("../workStatus");
+const { createWorkButtons } = require("../utils/workButtons");
 
 const {
     now,
@@ -29,7 +30,10 @@ module.exports = {
         `).get(userId, workDate);
 
         if (existing) {
-            await interaction.reply("이미 오늘 출근 등록이 되어 있어요.");
+            await interaction.reply({
+                content: "이미 오늘 출근 등록이 되어 있어요.",
+                components: createWorkButtons(userId),
+            });
             return;
         }
 
@@ -61,6 +65,9 @@ module.exports = {
             .setFooter({ text: "이나야 일해라" })
             .setTimestamp();
 
-        await interaction.reply({ embeds: [embed] });
+        await interaction.reply({
+            embeds: [embed],
+            components: createWorkButtons(userId),
+        });
     },
 };
