@@ -15,6 +15,8 @@ const {
     formatMinutes,
 } = require("./time");
 
+const LINE = "━━━━━━━━━━━━━━━━━━━━";
+
 function getSetting(key) {
     const row = db.prepare(`
         SELECT value FROM bot_settings
@@ -88,68 +90,96 @@ function getPanelStats() {
     };
 }
 
-function createSimpleList(records, type) {
-    if (records.length === 0) return "없음";
+function createPersonLine(record, type, index) {
+    const start = new Date(record.start_time);
+    const startText = formatTimeKST(start);
 
-    const current = now();
+    if (type === "finished") {
+        const end = new Date(record.end_time);
+        const endText = formatTimeKST(end);
+        const workText = formatMinutes(record.work_minutes);
 
-    return records
-        .slice(0, 8)
-        .map((record, index) => {
-            const start = new Date(record.start_time);
-            const startText = formatTimeKST(start);
+        return [
+            `**${index + 1}. ${record.username}**`,
+            `└ ${startText} ~ ${endText} · ${workText}`,
+        ].join("\n");
+    }
 
-            if (type === "finished") {
-                const end = new Date(record.end_time);
-                const endText = formatTimeKST(end);
-                return `${index + 1}. **${record.username}** · ${startText} ~ ${endText}`;
-            }
+    if (type === "overtime") {
+        const current = now();
+        const expectedEnd = addHours(start, 9);
+        const overMinutes = Math.max(0, Math.floor((current - expectedEnd) / 1000 / 60));
 
-            if (type === "overtime") {
-                const expectedEnd = addHours(start, 9);
-                const overMinutes = Math.max(0, Math.floor((current - expectedEnd) / 1000 / 60));
-                return `${index + 1}. **${record.username}** · ${startText} 출근 · 초과 ${formatMinutes(overMinutes)}`;
-            }
+        return [
+            `**${index + 1}. ${record.username}**`,
+            `└ ${startText} 출근 · 초과 ${formatMinutes(overMinutes)}`,
+        ].join("\n");
+    }
 
-            const expectedEnd = addHours(start, 9);
-            return `${index + 1}. **${record.username}** · ${startText} 출근 · ${formatTimeKST(expectedEnd)} 퇴근예정`;
-        })
-        .join("\n");
+    const expectedEnd = addHours(start, 9);
+
+    return [
+        `**${index + 1}. ${record.username}**`,
+        `└ ${startText} 출근 · ${formatTimeKST(expectedEnd)} 퇴근예정`,
+    ].join("\n");
+}
+
+function createList(records, type) {
+    if (records.length === 0) {
+        return "없음";
+    }
+
+    const shown = records.slice(0, 8)
+        .map((record, index) => createPersonLine(record, type, index))
+        .join("\n\n");
+
+    if (records.length <= 8) {
+        return shown;
+    }
+
+    return `${shown}\n\n외 ${records.length - 8}명`;
 }
 
 function createPanelEmbed() {
     const stats = getPanelStats();
+    const updatedAt = formatTimeKST(now());
 
     return new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle("📋 근태관리")
         .setDescription(
             [
-                "아래 버튼으로 출근/퇴근을 기록할 수 있습니다.",
+                "오늘의 근태 현황입니다.",
                 "",
-                `🟢 **출근중** ${stats.working.length}명`,
-                `🌙 **야근중** ${stats.overtime.length}명`,
-                `🏠 **퇴근완료** ${stats.finished.length}명`,
+                LINE,
+                "",
+                `🟢 **출근중**　　${stats.working.length}명`,
+                `🌙 **야근중**　　${stats.overtime.length}명`,
+                `🏠 **퇴근완료**　${stats.finished.length}명`,
+                "",
+                LINE,
             ].join("\n")
         )
         .addFields(
             {
-                name: "🟢 출근중",
-                value: createSimpleList(stats.working, "working"),
+                name: `🟢 출근중 (${stats.working.length}명)`,
+                value: createList(stats.working, "working"),
                 inline: false,
             },
             {
-                name: "🌙 야근중",
-                value: createSimpleList(stats.overtime, "overtime"),
+                name: `🌙 야근중 (${stats.overtime.length}명)`,
+                value: createList(stats.overtime, "overtime"),
                 inline: false,
             },
             {
-                name: "🏠 퇴근완료",
-                value: createSimpleList(stats.finished, "finished"),
+                name: `🏠 퇴근완료 (${stats.finished.length}명)`,
+                value: createList(stats.finished, "finished"),
                 inline: false,
             }
         )
-        .setFooter({ text: `총 ${stats.total}명 · 이나야 일해라` })
+        .setFooter({
+            text: `👥 총 ${stats.total}명 · 마지막 갱신 ${updatedAt} · 이나야 일해라`,
+        })
         .setTimestamp();
 }
 
@@ -159,28 +189,28 @@ function createPanelButtons() {
     const row1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId("work_start")
+            .setLabel("출근하기")
             .setEmoji("🟢")
-            .setLabel(`출근`)
             .setStyle(ButtonStyle.Success),
 
         new ButtonBuilder()
             .setCustomId("work_end")
+            .setLabel("퇴근하기")
             .setEmoji("🔴")
-            .setLabel(`퇴근`)
             .setStyle(ButtonStyle.Danger)
     );
 
     const row2 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId("work_until")
-            .setEmoji("⏰")
             .setLabel("퇴근까지")
+            .setEmoji("⏰")
             .setStyle(ButtonStyle.Primary),
 
         new ButtonBuilder()
             .setCustomId("work_status")
-            .setEmoji("📊")
             .setLabel(`출근현황 ${stats.total}`)
+            .setEmoji("📊")
             .setStyle(ButtonStyle.Secondary)
     );
 
