@@ -1,6 +1,14 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const db = require("../database");
 
+const {
+    now,
+    getTodayKST,
+    formatTimeKST,
+    addHours,
+    formatMinutes,
+} = require("../utils/time");
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("오늘")
@@ -8,8 +16,8 @@ module.exports = {
 
     async execute(interaction) {
         const userId = interaction.user.id;
-        const now = new Date();
-        const workDate = now.toISOString().slice(0, 10);
+        const current = now();
+        const workDate = getTodayKST(current);
 
         const record = db.prepare(`
             SELECT * FROM work_log
@@ -24,16 +32,12 @@ module.exports = {
         }
 
         const start = new Date(record.start_time);
-        const startText = `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`;
+        const startText = formatTimeKST(start);
 
         if (record.status === "working") {
-            const end = new Date(start);
-            end.setHours(end.getHours() + 9);
-
-            const diff = end - now;
-            const hours = Math.max(0, Math.floor(diff / 1000 / 60 / 60));
-            const minutes = Math.max(0, Math.floor((diff / 1000 / 60) % 60));
-            const endText = `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`;
+            const end = addHours(start, 9);
+            const remainMinutes = Math.max(0, Math.floor((end - current) / 1000 / 60));
+            const endText = formatTimeKST(end);
 
             const embed = new EmbedBuilder()
                 .setColor(0x57F287)
@@ -42,7 +46,7 @@ module.exports = {
                     { name: "상태", value: "🟢 근무중", inline: true },
                     { name: "출근", value: startText, inline: true },
                     { name: "퇴근 예정", value: endText, inline: true },
-                    { name: "남은 시간", value: `${hours}시간 ${minutes}분`, inline: true }
+                    { name: "남은 시간", value: formatMinutes(remainMinutes), inline: true }
                 )
                 .setFooter({ text: "이나야 일해라" })
                 .setTimestamp();
@@ -52,10 +56,7 @@ module.exports = {
         }
 
         const end = new Date(record.end_time);
-        const endText = `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`;
-
-        const hours = Math.floor(record.work_minutes / 60);
-        const minutes = record.work_minutes % 60;
+        const endText = formatTimeKST(end);
 
         const embed = new EmbedBuilder()
             .setColor(0xED4245)
@@ -64,7 +65,7 @@ module.exports = {
                 { name: "상태", value: "🔴 퇴근완료", inline: true },
                 { name: "출근", value: startText, inline: true },
                 { name: "퇴근", value: endText, inline: true },
-                { name: "총 근무", value: `${hours}시간 ${minutes}분`, inline: true }
+                { name: "총 근무", value: formatMinutes(record.work_minutes), inline: true }
             )
             .setFooter({ text: "이나야 일해라" })
             .setTimestamp();
