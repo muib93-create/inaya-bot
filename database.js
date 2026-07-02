@@ -28,4 +28,13 @@ CREATE TABLE IF NOT EXISTS bot_settings (
 );
 `);
 
+// 사용자별 근무시간 설정 테이블
+db.exec(`
+CREATE TABLE IF NOT EXISTS user_work_settings (
+    user_id TEXT PRIMARY KEY,
+    target_minutes INTEGER NOT NULL DEFAULT 540,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+`);
+
 module.exports = db;
