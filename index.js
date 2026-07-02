@@ -6,6 +6,12 @@ const { Client, GatewayIntentBits, Collection, EmbedBuilder } = require("discord
 const fs = require("fs");
 const path = require("path");
 
+const {
+    now,
+    formatTimeKST,
+    addHours,
+} = require("./utils/time");
+
 const client = new Client({
     intents: [GatewayIntentBits.Guilds],
 });
@@ -18,6 +24,12 @@ const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith("
 for (const file of commandFiles) {
     const filePath = path.join(commandsPath, file);
     const command = require(filePath);
+
+    if (!command.data || !command.execute) {
+        console.log(`⚠️ 명령어 파일 오류: ${file}`);
+        continue;
+    }
+
     client.commands.set(command.data.name, command);
 }
 
@@ -33,15 +45,14 @@ client.once("clientReady", () => {
             WHERE status = 'working'
         `).all();
 
-        const now = new Date();
+        const current = now();
 
         for (const record of records) {
             const start = new Date(record.start_time);
-            const end = new Date(start);
-            end.setHours(end.getHours() + 9);
+            const end = addHours(start, 9);
 
-            const diffMinutes = Math.floor((end - now) / 1000 / 60);
-            const endText = `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`;
+            const diffMinutes = Math.floor((end - current) / 1000 / 60);
+            const endText = formatTimeKST(end);
 
             let embed = null;
             let nextState = record.notification_state;
@@ -82,20 +93,6 @@ client.once("clientReady", () => {
                 nextState = 3;
             }
 
-            const isPastMidnight = now.getHours() === 0 && record.notification_state < 4;
-
-            if (isPastMidnight) {
-                embed = new EmbedBuilder()
-                    .setColor(0x5865F2)
-                    .setTitle("🌙 자정 경고")
-                    .setDescription(`<@${record.user_id}> 자정이 지났는데 아직 퇴근 기록이 없어요.`)
-                    .addFields({ name: "상태", value: "퇴근 기록 없음", inline: true })
-                    .setFooter({ text: "이나야 일해라" })
-                    .setTimestamp();
-
-                nextState = 4;
-            }
-
             if (embed && nextState !== record.notification_state) {
                 const channel = await client.channels.fetch(process.env.NOTIFY_CHANNEL_ID);
 
@@ -117,12 +114,41 @@ client.once("clientReady", () => {
 });
 
 client.on("interactionCreate", async interaction => {
-    if (!interaction.isChatInputCommand()) return;
+    try {
+        if (interaction.isButton()) {
+            const buttonCommandMap = {
+                work_start: "출근",
+                work_end: "퇴근",
+                work_until: "퇴근까지",
+                work_status: "출근현황",
+            };
 
-    const command = client.commands.get(interaction.commandName);
-    if (!command) return;
+            const commandName = buttonCommandMap[interaction.customId];
+            if (!commandName) return;
 
-    await command.execute(interaction);
+            const command = client.commands.get(commandName);
+            if (!command) return;
+
+            await command.execute(interaction);
+            return;
+        }
+
+        if (!interaction.isChatInputCommand()) return;
+
+        const command = client.commands.get(interaction.commandName);
+        if (!command) return;
+
+        await command.execute(interaction);
+    } catch (err) {
+        console.error("명령어 오류:", err);
+
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({
+                content: "❌ 오류가 발생했습니다.",
+                ephemeral: true,
+            });
+        }
+    }
 });
 
 client.login(process.env.DISCORD_TOKEN);
