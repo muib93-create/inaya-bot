@@ -90,7 +90,21 @@ function getPanelStats() {
     };
 }
 
-function createPersonLine(record, type, index) {
+async function getDisplayName(client, userId, fallbackName) {
+    const guildId = process.env.GUILD_ID;
+
+    try {
+        const guild = await client.guilds.fetch(guildId);
+        const member = await guild.members.fetch(userId);
+        return member.displayName;
+    } catch (error) {
+        return fallbackName || userId;
+    }
+}
+
+async function createPersonLine(client, record, type) {
+    const displayName = await getDisplayName(client, record.user_id, record.username);
+
     const start = new Date(record.start_time);
     const startText = formatTimeKST(start);
 
@@ -100,7 +114,7 @@ function createPersonLine(record, type, index) {
         const workText = formatMinutes(record.work_minutes);
 
         return [
-            `**${index + 1}. ${record.username}**`,
+            `👤 **${displayName}**`,
             `└ ${startText} ~ ${endText} · ${workText}`,
         ].join("\n");
     }
@@ -111,7 +125,7 @@ function createPersonLine(record, type, index) {
         const overMinutes = Math.max(0, Math.floor((current - expectedEnd) / 1000 / 60));
 
         return [
-            `**${index + 1}. ${record.username}**`,
+            `👤 **${displayName}**`,
             `└ ${startText} 출근 · 초과 ${formatMinutes(overMinutes)}`,
         ].join("\n");
     }
@@ -119,30 +133,38 @@ function createPersonLine(record, type, index) {
     const expectedEnd = addHours(start, 9);
 
     return [
-        `**${index + 1}. ${record.username}**`,
+        `👤 **${displayName}**`,
         `└ ${startText} 출근 · ${formatTimeKST(expectedEnd)} 퇴근예정`,
     ].join("\n");
 }
 
-function createList(records, type) {
+async function createList(client, records, type) {
     if (records.length === 0) {
         return "없음";
     }
 
-    const shown = records.slice(0, 8)
-        .map((record, index) => createPersonLine(record, type, index))
-        .join("\n\n");
+    const lines = [];
+
+    for (const [index, record] of records.slice(0, 8).entries()) {
+        lines.push(await createPersonLine(client, record, type, index));
+    }
+
+    const shown = lines.join("\n");
 
     if (records.length <= 8) {
         return shown;
     }
 
-    return `${shown}\n\n외 ${records.length - 8}명`;
+    return `${shown}\n외 ${records.length - 8}명`;
 }
 
-function createPanelEmbed() {
+async function createPanelEmbed(client) {
     const stats = getPanelStats();
     const updatedAt = formatTimeKST(now());
+
+    const workingList = await createList(client, stats.working, "working");
+    const overtimeList = await createList(client, stats.overtime, "overtime");
+    const finishedList = await createList(client, stats.finished, "finished");
 
     return new EmbedBuilder()
         .setColor(0x5865F2)
@@ -163,17 +185,17 @@ function createPanelEmbed() {
         .addFields(
             {
                 name: `🟢 출근중 (${stats.working.length}명)`,
-                value: createList(stats.working, "working"),
+                value: workingList,
                 inline: false,
             },
             {
                 name: `🌙 야근중 (${stats.overtime.length}명)`,
-                value: createList(stats.overtime, "overtime"),
+                value: overtimeList,
                 inline: false,
             },
             {
                 name: `🏠 퇴근완료 (${stats.finished.length}명)`,
-                value: createList(stats.finished, "finished"),
+                value: finishedList,
                 inline: false,
             }
         )
@@ -222,7 +244,7 @@ async function createOrUpdatePanel(channel) {
     const savedMessageId = getSetting("work_panel_message_id");
 
     const payload = {
-        embeds: [createPanelEmbed()],
+        embeds: [await createPanelEmbed(channel.client)],
         components: createPanelButtons(),
     };
 
@@ -257,7 +279,7 @@ async function updatePanel(client) {
         const message = await channel.messages.fetch(messageId);
 
         await message.edit({
-            embeds: [createPanelEmbed()],
+            embeds: [await createPanelEmbed(client)],
             components: createPanelButtons(),
         });
     } catch (error) {
