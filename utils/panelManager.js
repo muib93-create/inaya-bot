@@ -19,7 +19,12 @@ const { getUserWorkMinutes } = require("./workConfig");
 const LINE = "━━━━━━━━━━━━━━━━━━━━";
 
 function getSetting(key) {
-    const row = db.prepare(`SELECT value FROM bot_settings WHERE key = ?`).get(key);
+    const row = db.prepare(`
+        SELECT value
+        FROM bot_settings
+        WHERE key = ?
+    `).get(key);
+
     return row ? row.value : null;
 }
 
@@ -35,9 +40,14 @@ function addMinutes(date, minutes) {
     return new Date(date.getTime() + minutes * 60 * 1000);
 }
 
-function getExpectedEnd(record) {
-    const start = new Date(record.start_time);
-    return addMinutes(start, getUserWorkMinutes(record.user_id));
+async function getDisplayName(client, userId, fallbackName) {
+    try {
+        const guild = await client.guilds.fetch(process.env.GUILD_ID);
+        const member = await guild.members.fetch(userId);
+        return member.displayName;
+    } catch {
+        return fallbackName || userId;
+    }
 }
 
 function getTodayRecords() {
@@ -61,12 +71,18 @@ function getTodayRecords() {
     return Array.from(latestByUser.values());
 }
 
+function getDockRecords() {
+    return db.prepare(`
+        SELECT *
+        FROM dock_status
+        ORDER BY started_at ASC
+    `).all();
+}
+
 function getPanelStats() {
-    const current = now();
     const records = getTodayRecords();
 
     const working = [];
-    const overtime = [];
     const finished = [];
 
     for (const record of records) {
@@ -76,61 +92,73 @@ function getPanelStats() {
         }
 
         if (record.status === "working") {
-            const expectedEnd = getExpectedEnd(record);
-            if (current >= expectedEnd) overtime.push(record);
-            else working.push(record);
+            working.push(record);
         }
     }
 
-    return { working, overtime, finished, total: records.length };
+    const dock = getDockRecords();
+
+    return {
+        working,
+        finished,
+        dock,
+        total: records.length,
+    };
 }
 
-async function getDisplayName(client, userId, fallbackName) {
-    try {
-        const guild = await client.guilds.fetch(process.env.GUILD_ID);
-        const member = await guild.members.fetch(userId);
-        return member.displayName;
-    } catch {
-        return fallbackName || userId;
-    }
-}
-
-async function createPersonLine(client, record, type) {
+async function createWorkLine(client, record) {
     const displayName = await getDisplayName(client, record.user_id, record.username);
 
+    const current = now();
     const start = new Date(record.start_time);
+    const targetMinutes = getUserWorkMinutes(record.user_id);
+    const expectedEnd = addMinutes(start, targetMinutes);
+
     const startText = formatTimeKST(start);
-    const targetText = formatMinutes(getUserWorkMinutes(record.user_id));
+    const endText = formatTimeKST(expectedEnd);
 
-    if (type === "finished") {
-        const end = new Date(record.end_time);
-        const endText = formatTimeKST(end);
-        const workText = formatMinutes(record.work_minutes);
+    const diffMinutes = Math.floor((expectedEnd - current) / 1000 / 60);
 
+    if (diffMinutes > 0) {
         return [
             `👤 **${displayName}**`,
-            `└ ${startText} ~ ${endText} · ${workText}`,
+            `└ ${startText} → ${endText}`,
+            `└ 남은 ${formatMinutes(diffMinutes)}`,
         ].join("\n");
     }
 
-    if (type === "overtime") {
-        const current = now();
-        const expectedEnd = getExpectedEnd(record);
-        const overMinutes = Math.max(0, Math.floor((current - expectedEnd) / 1000 / 60));
-
-        return [
-            `👤 **${displayName}**`,
-            `└ ${startText} 출근 · ${formatTimeKST(expectedEnd)} 예정 · 초과 ${formatMinutes(overMinutes)}`,
-            `└ 목표 ${targetText}`,
-        ].join("\n");
-    }
-
-    const expectedEnd = getExpectedEnd(record);
+    const overMinutes = Math.abs(diffMinutes);
 
     return [
         `👤 **${displayName}**`,
-        `└ ${startText} 출근 · ${formatTimeKST(expectedEnd)} 퇴근예정`,
-        `└ 목표 ${targetText}`,
+        `└ ${startText} → ${endText}`,
+        `└ 초과 ${formatMinutes(overMinutes)}`,
+    ].join("\n");
+}
+
+async function createFinishedLine(client, record) {
+    const displayName = await getDisplayName(client, record.user_id, record.username);
+
+    const start = new Date(record.start_time);
+    const end = new Date(record.end_time);
+
+    return [
+        `👤 **${displayName}**`,
+        `└ ${formatTimeKST(start)} → ${formatTimeKST(end)}`,
+        `└ 총 근무 ${formatMinutes(record.work_minutes)}`,
+    ].join("\n");
+}
+
+async function createDockLine(client, record) {
+    const displayName = await getDisplayName(client, record.user_id, record.username);
+
+    const current = now();
+    const startedAt = new Date(record.started_at);
+    const waitingMinutes = Math.max(1, Math.floor((current - startedAt) / 1000 / 60));
+
+    return [
+        `👤 **${displayName}**`,
+        `└ 대기 ${formatMinutes(waitingMinutes)}째`,
     ].join("\n");
 }
 
@@ -138,16 +166,27 @@ async function createList(client, records, type) {
     if (records.length === 0) return "없음";
 
     const lines = [];
+    const sliced = records.slice(0, 8);
 
-    for (const record of records.slice(0, 8)) {
-        lines.push(await createPersonLine(client, record, type));
+    for (const record of sliced) {
+        if (type === "working") {
+            lines.push(await createWorkLine(client, record));
+        }
+
+        if (type === "finished") {
+            lines.push(await createFinishedLine(client, record));
+        }
+
+        if (type === "dock") {
+            lines.push(await createDockLine(client, record));
+        }
     }
 
-    const shown = lines.join("\n");
+    const shown = lines.join("\n\n");
 
     if (records.length <= 8) return shown;
 
-    return `${shown}\n외 ${records.length - 8}명`;
+    return `${shown}\n\n외 ${records.length - 8}명`;
 }
 
 async function createPanelEmbed(client) {
@@ -155,8 +194,8 @@ async function createPanelEmbed(client) {
     const updatedAt = formatTimeKST(now());
 
     const workingList = await createList(client, stats.working, "working");
-    const overtimeList = await createList(client, stats.overtime, "overtime");
     const finishedList = await createList(client, stats.finished, "finished");
+    const dockList = await createList(client, stats.dock, "dock");
 
     return new EmbedBuilder()
         .setColor(0x5865F2)
@@ -167,27 +206,27 @@ async function createPanelEmbed(client) {
                 "",
                 LINE,
                 "",
-                `🟢 **출근중**　　${stats.working.length}명`,
-                `🌙 **야근중**　　${stats.overtime.length}명`,
+                `🟢 **근무중**　　${stats.working.length}명`,
                 `🏠 **퇴근완료**　${stats.finished.length}명`,
+                `🔞 **도킹가능**　${stats.dock.length}명`,
                 "",
                 LINE,
             ].join("\n")
         )
         .addFields(
             {
-                name: `🟢 출근중 (${stats.working.length}명)`,
+                name: `🟢 근무중 (${stats.working.length}명)`,
                 value: workingList,
-                inline: false,
-            },
-            {
-                name: `🌙 야근중 (${stats.overtime.length}명)`,
-                value: overtimeList,
                 inline: false,
             },
             {
                 name: `🏠 퇴근완료 (${stats.finished.length}명)`,
                 value: finishedList,
+                inline: false,
+            },
+            {
+                name: `🔞 도킹가능 (${stats.dock.length}명)`,
+                value: dockList,
                 inline: false,
             }
         )
@@ -210,6 +249,12 @@ function createPanelButtons() {
             .setLabel("퇴근")
             .setEmoji("🔴")
             .setStyle(ButtonStyle.Danger),
+
+        new ButtonBuilder()
+            .setCustomId("work_dock")
+            .setLabel("도킹")
+            .setEmoji("🔞")
+            .setStyle(ButtonStyle.Primary),
 
         new ButtonBuilder()
             .setCustomId("work_reset")

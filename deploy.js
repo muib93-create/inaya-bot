@@ -12,6 +12,7 @@ const hiddenCommands = [
     "출근",
     "퇴근",
     "초기화",
+    "도킹",
 ];
 
 for (const file of commandFiles) {

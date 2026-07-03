@@ -124,6 +124,7 @@ client.on("interactionCreate", async interaction => {
             const buttonCommandMap = {
                 work_start: "출근",
                 work_end: "퇴근",
+                work_dock: "도킹",
                 work_reset: "초기화",
             };
 

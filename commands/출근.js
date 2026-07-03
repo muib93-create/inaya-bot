@@ -34,8 +34,11 @@ module.exports = {
         const targetMinutes = getUserWorkMinutes(userId);
 
         const existing = db.prepare(`
-            SELECT * FROM work_log
-            WHERE user_id = ? AND work_date = ? AND status = 'working'
+            SELECT *
+            FROM work_log
+            WHERE user_id = ?
+              AND work_date = ?
+              AND status = 'working'
         `).get(userId, workDate);
 
         if (existing) {
@@ -48,6 +51,12 @@ module.exports = {
             }
             return;
         }
+
+        // 🔞 도킹 상태 자동 해제
+        db.prepare(`
+            DELETE FROM dock_status
+            WHERE user_id = ?
+        `).run(userId);
 
         db.prepare(`
             INSERT INTO work_log (

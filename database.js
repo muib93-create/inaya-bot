@@ -37,4 +37,14 @@ CREATE TABLE IF NOT EXISTS user_work_settings (
 );
 `);
 
+// 도킹 가능 상태 테이블
+db.exec(`
+CREATE TABLE IF NOT EXISTS dock_status (
+    user_id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+`);
+
 module.exports = db;
