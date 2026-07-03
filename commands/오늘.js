@@ -5,9 +5,16 @@ const {
     now,
     getTodayKST,
     formatTimeKST,
-    addHours,
     formatMinutes,
 } = require("../utils/time");
+
+const {
+    getUserWorkMinutes,
+} = require("../utils/workConfig");
+
+function addMinutes(date, minutes) {
+    return new Date(date.getTime() + minutes * 60 * 1000);
+}
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -18,6 +25,7 @@ module.exports = {
         const userId = interaction.user.id;
         const current = now();
         const workDate = getTodayKST(current);
+        const targetMinutes = getUserWorkMinutes(userId);
 
         const record = db.prepare(`
             SELECT * FROM work_log
@@ -35,7 +43,7 @@ module.exports = {
         const startText = formatTimeKST(start);
 
         if (record.status === "working") {
-            const end = addHours(start, 9);
+            const end = addMinutes(start, targetMinutes);
             const remainMinutes = Math.max(0, Math.floor((end - current) / 1000 / 60));
             const endText = formatTimeKST(end);
 
@@ -46,6 +54,7 @@ module.exports = {
                     { name: "상태", value: "🟢 근무중", inline: true },
                     { name: "출근", value: startText, inline: true },
                     { name: "퇴근 예정", value: endText, inline: true },
+                    { name: "목표 근무", value: formatMinutes(targetMinutes), inline: true },
                     { name: "남은 시간", value: formatMinutes(remainMinutes), inline: true }
                 )
                 .setFooter({ text: "이나야 일해라" })
@@ -65,6 +74,7 @@ module.exports = {
                 { name: "상태", value: "🔴 퇴근완료", inline: true },
                 { name: "출근", value: startText, inline: true },
                 { name: "퇴근", value: endText, inline: true },
+                { name: "목표 근무", value: formatMinutes(targetMinutes), inline: true },
                 { name: "총 근무", value: formatMinutes(record.work_minutes), inline: true }
             )
             .setFooter({ text: "이나야 일해라" })

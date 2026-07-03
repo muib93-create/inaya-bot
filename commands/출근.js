@@ -8,8 +8,16 @@ const {
     now,
     getTodayKST,
     formatTimeKST,
-    addHours,
+    formatMinutes,
 } = require("../utils/time");
+
+const {
+    getUserWorkMinutes,
+} = require("../utils/workConfig");
+
+function addMinutes(date, minutes) {
+    return new Date(date.getTime() + minutes * 60 * 1000);
+}
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -22,8 +30,9 @@ module.exports = {
         const workDate = getTodayKST(current);
         const startTime = current.toISOString();
 
-        const username = interaction.user.username;
+        const username = interaction.member?.displayName ?? interaction.user.username;
         const userId = interaction.user.id;
+        const targetMinutes = getUserWorkMinutes(userId);
 
         const existing = db.prepare(`
             SELECT * FROM work_log
@@ -48,13 +57,10 @@ module.exports = {
             ) VALUES (?, ?, ?, ?, 'working')
         `).run(userId, username, workDate, startTime);
 
-        // 상태 채널 갱신
         workStatus.updateStatus(interaction.client).catch(console.error);
-
-        // 근태 패널 갱신
         updatePanel(interaction.client).catch(console.error);
 
-        const end = addHours(current, 9);
+        const end = addMinutes(current, targetMinutes);
 
         const start = formatTimeKST(current);
         const finish = formatTimeKST(end);
@@ -65,7 +71,8 @@ module.exports = {
             .setDescription("오늘도 힘내서 일해봅시다.")
             .addFields(
                 { name: "출근 시간", value: start, inline: true },
-                { name: "퇴근 예정", value: finish, inline: true }
+                { name: "퇴근 예정", value: finish, inline: true },
+                { name: "목표 근무", value: formatMinutes(targetMinutes), inline: true }
             )
             .setFooter({ text: "이나야 일해라" })
             .setTimestamp();

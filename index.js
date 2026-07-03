@@ -3,6 +3,7 @@ require("dotenv").config();
 const db = require("./database");
 const workStatus = require("./workStatus");
 const { updatePanel } = require("./utils/panelManager");
+const { getUserWorkMinutes } = require("./utils/workConfig");
 const { Client, GatewayIntentBits, Collection, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
@@ -10,8 +11,11 @@ const path = require("path");
 const {
     now,
     formatTimeKST,
-    addHours,
 } = require("./utils/time");
+
+function addMinutes(date, minutes) {
+    return new Date(date.getTime() + minutes * 60 * 1000);
+}
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds],
@@ -51,7 +55,8 @@ client.once("clientReady", () => {
 
         for (const record of records) {
             const start = new Date(record.start_time);
-            const end = addHours(start, 9);
+            const targetMinutes = getUserWorkMinutes(record.user_id);
+            const end = addMinutes(start, targetMinutes);
 
             const diffMinutes = Math.floor((end - current) / 1000 / 60);
             const endText = formatTimeKST(end);

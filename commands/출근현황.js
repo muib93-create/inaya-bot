@@ -5,9 +5,16 @@ const {
     now,
     getTodayKST,
     formatTimeKST,
-    addHours,
     formatMinutes,
 } = require("../utils/time");
+
+const {
+    getUserWorkMinutes,
+} = require("../utils/workConfig");
+
+function addMinutes(date, minutes) {
+    return new Date(date.getTime() + minutes * 60 * 1000);
+}
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -45,7 +52,8 @@ module.exports = {
 
             if (record.status === "working") {
                 const start = new Date(record.start_time);
-                const expectedEnd = addHours(start, 9);
+                const targetMinutes = getUserWorkMinutes(record.user_id);
+                const expectedEnd = addMinutes(start, targetMinutes);
 
                 if (current >= expectedEnd) {
                     overtime.push(record);
@@ -60,9 +68,10 @@ module.exports = {
 
             return list.map((record, index) => {
                 const start = new Date(record.start_time);
-                const expectedEnd = addHours(start, 9);
+                const targetMinutes = getUserWorkMinutes(record.user_id);
+                const expectedEnd = addMinutes(start, targetMinutes);
 
-                return `${index + 1}. **${record.username}** - ${formatTimeKST(start)} 출근 / ${formatTimeKST(expectedEnd)} 퇴근예정`;
+                return `${index + 1}. **${record.username}** - ${formatTimeKST(start)} 출근 / ${formatTimeKST(expectedEnd)} 퇴근예정 / 목표 ${formatMinutes(targetMinutes)}`;
             }).join("\n");
         }
 
@@ -71,11 +80,12 @@ module.exports = {
 
             return list.map((record, index) => {
                 const start = new Date(record.start_time);
-                const expectedEnd = addHours(start, 9);
+                const targetMinutes = getUserWorkMinutes(record.user_id);
+                const expectedEnd = addMinutes(start, targetMinutes);
 
                 const overMinutes = Math.max(0, Math.floor((current - expectedEnd) / 1000 / 60));
 
-                return `${index + 1}. **${record.username}** - ${formatTimeKST(start)} 출근 / 초과 ${formatMinutes(overMinutes)}`;
+                return `${index + 1}. **${record.username}** - ${formatTimeKST(start)} 출근 / 초과 ${formatMinutes(overMinutes)} / 목표 ${formatMinutes(targetMinutes)}`;
             }).join("\n");
         }
 
@@ -85,8 +95,9 @@ module.exports = {
             return list.map((record, index) => {
                 const start = new Date(record.start_time);
                 const end = new Date(record.end_time);
+                const targetMinutes = getUserWorkMinutes(record.user_id);
 
-                return `${index + 1}. **${record.username}** - ${formatTimeKST(start)} ~ ${formatTimeKST(end)} / ${formatMinutes(record.work_minutes)}`;
+                return `${index + 1}. **${record.username}** - ${formatTimeKST(start)} ~ ${formatTimeKST(end)} / ${formatMinutes(record.work_minutes)} / 목표 ${formatMinutes(targetMinutes)}`;
             }).join("\n");
         }
 
