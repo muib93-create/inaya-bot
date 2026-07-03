@@ -4,6 +4,7 @@ const { updatePanel } = require("../utils/panelManager");
 
 const {
     now,
+    getTodayKST,
 } = require("../utils/time");
 
 module.exports = {
@@ -14,6 +15,7 @@ module.exports = {
     async execute(interaction, fromButton = false) {
         const userId = interaction.user.id;
         const username = interaction.member?.displayName ?? interaction.user.username;
+        const today = getTodayKST(now());
 
         const existing = db.prepare(`
             SELECT *
@@ -38,6 +40,12 @@ module.exports = {
 
             return;
         }
+
+        db.prepare(`
+            DELETE FROM work_log
+            WHERE user_id = ?
+              AND work_date = ?
+        `).run(userId, today);
 
         db.prepare(`
             INSERT INTO dock_status (

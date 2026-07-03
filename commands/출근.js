@@ -38,13 +38,14 @@ module.exports = {
             FROM work_log
             WHERE user_id = ?
               AND work_date = ?
-              AND status = 'working'
+            ORDER BY id DESC
+            LIMIT 1
         `).get(userId, workDate);
 
         if (existing) {
             if (!fromButton) {
                 await interaction.reply({
-                    content: "이미 오늘 출근 등록이 되어 있어요.",
+                    content: "오늘은 이미 출근 기록이 있어요. 다시 출근할 수 없습니다.",
                     components: createWorkButtons(userId),
                     ephemeral: true,
                 });
@@ -52,7 +53,6 @@ module.exports = {
             return;
         }
 
-        // 🔞 도킹 상태 자동 해제
         db.prepare(`
             DELETE FROM dock_status
             WHERE user_id = ?
