@@ -201,15 +201,21 @@ function createPanelButtons() {
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId("work_start")
-            .setLabel("출근하기")
+            .setLabel("출근")
             .setEmoji("🟢")
             .setStyle(ButtonStyle.Success),
 
         new ButtonBuilder()
             .setCustomId("work_end")
-            .setLabel("퇴근하기")
+            .setLabel("퇴근")
             .setEmoji("🔴")
-            .setStyle(ButtonStyle.Danger)
+            .setStyle(ButtonStyle.Danger),
+
+        new ButtonBuilder()
+            .setCustomId("work_reset")
+            .setLabel("초기화")
+            .setEmoji("🧹")
+            .setStyle(ButtonStyle.Secondary)
     );
 
     return [row];

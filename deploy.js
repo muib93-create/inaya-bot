@@ -8,9 +8,20 @@ const commands = [];
 const commandsPath = path.join(__dirname, "commands");
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith(".js"));
 
+const hiddenCommands = [
+    "출근",
+    "퇴근",
+    "초기화",
+];
+
 for (const file of commandFiles) {
     const filePath = path.join(commandsPath, file);
     const command = require(filePath);
+
+    if (hiddenCommands.includes(command.data.name)) {
+        continue;
+    }
+
     commands.push(command.data.toJSON());
 }
 
