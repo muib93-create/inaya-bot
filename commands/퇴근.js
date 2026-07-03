@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const db = require("../database");
-const workStatus = require("../workStatus");
 const { createWorkButtons } = require("../utils/workButtons");
 const { updatePanel } = require("../utils/panelManager");
 
@@ -45,9 +44,6 @@ module.exports = {
                 status = 'finished'
             WHERE id = ?
         `).run(end.toISOString(), workMinutes, record.id);
-
-        // 상태 채널 갱신
-        workStatus.updateStatus(interaction.client).catch(console.error);
 
         // 근태 패널 갱신
         updatePanel(interaction.client).catch(console.error);

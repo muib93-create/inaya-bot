@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const db = require("../database");
-const workStatus = require("../workStatus");
 const { createWorkButtons } = require("../utils/workButtons");
 const { updatePanel } = require("../utils/panelManager");
 
@@ -57,7 +56,6 @@ module.exports = {
             ) VALUES (?, ?, ?, ?, 'working')
         `).run(userId, username, workDate, startTime);
 
-        workStatus.updateStatus(interaction.client).catch(console.error);
         updatePanel(interaction.client).catch(console.error);
 
         const end = addMinutes(current, targetMinutes);
