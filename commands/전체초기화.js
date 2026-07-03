@@ -8,7 +8,6 @@ const {
 } = require("discord.js");
 
 const db = require("../database");
-const workStatus = require("../workStatus");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -83,8 +82,6 @@ module.exports = {
                     DELETE FROM work_log
                     WHERE work_date = ?
                 `).run(today);
-
-                workStatus.updateStatus(interaction.client).catch(console.error);
 
                 collector.stop();
 
