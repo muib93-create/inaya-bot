@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const db = require("../database");
-const workStatus = require("../workStatus");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -16,8 +15,6 @@ module.exports = {
             DELETE FROM work_log
             WHERE user_id = ? AND work_date = ?
         `).run(userId, today);
-
-        workStatus.updateStatus(interaction.client).catch(console.error);
 
         if (result.changes === 0) {
             await interaction.reply({
