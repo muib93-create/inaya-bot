@@ -1,5 +1,11 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const db = require("../database");
+const { updatePanel } = require("../utils/panelManager");
+
+const {
+    now,
+    getTodayKST,
+} = require("../utils/time");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -8,8 +14,7 @@ module.exports = {
 
     async execute(interaction) {
         const userId = interaction.user.id;
-        const now = new Date();
-        const today = now.toISOString().slice(0, 10);
+        const today = getTodayKST(now());
 
         const result = db.prepare(`
             DELETE FROM work_log
@@ -23,6 +28,8 @@ module.exports = {
             });
             return;
         }
+
+        updatePanel(interaction.client).catch(console.error);
 
         const embed = new EmbedBuilder()
             .setColor(0x5865F2)
