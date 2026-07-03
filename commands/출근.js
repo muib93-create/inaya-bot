@@ -23,7 +23,7 @@ module.exports = {
         .setName("출근")
         .setDescription("현재 시간으로 출근을 등록합니다"),
 
-    async execute(interaction) {
+    async execute(interaction, fromButton = false) {
         const current = now();
 
         const workDate = getTodayKST(current);
@@ -39,10 +39,13 @@ module.exports = {
         `).get(userId, workDate);
 
         if (existing) {
-            await interaction.reply({
-                content: "이미 오늘 출근 등록이 되어 있어요.",
-                components: createWorkButtons(userId),
-            });
+            if (!fromButton) {
+                await interaction.reply({
+                    content: "이미 오늘 출근 등록이 되어 있어요.",
+                    components: createWorkButtons(userId),
+                    ephemeral: true,
+                });
+            }
             return;
         }
 
@@ -57,6 +60,10 @@ module.exports = {
         `).run(userId, username, workDate, startTime);
 
         updatePanel(interaction.client).catch(console.error);
+
+        if (fromButton) {
+            return;
+        }
 
         const end = addMinutes(current, targetMinutes);
 

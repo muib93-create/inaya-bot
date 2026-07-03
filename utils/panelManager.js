@@ -14,18 +14,12 @@ const {
     formatMinutes,
 } = require("./time");
 
-const {
-    getUserWorkMinutes,
-} = require("./workConfig");
+const { getUserWorkMinutes } = require("./workConfig");
 
 const LINE = "━━━━━━━━━━━━━━━━━━━━";
 
 function getSetting(key) {
-    const row = db.prepare(`
-        SELECT value FROM bot_settings
-        WHERE key = ?
-    `).get(key);
-
+    const row = db.prepare(`SELECT value FROM bot_settings WHERE key = ?`).get(key);
     return row ? row.value : null;
 }
 
@@ -43,9 +37,7 @@ function addMinutes(date, minutes) {
 
 function getExpectedEnd(record) {
     const start = new Date(record.start_time);
-    const workMinutes = getUserWorkMinutes(record.user_id);
-
-    return addMinutes(start, workMinutes);
+    return addMinutes(start, getUserWorkMinutes(record.user_id));
 }
 
 function getTodayRecords() {
@@ -85,21 +77,12 @@ function getPanelStats() {
 
         if (record.status === "working") {
             const expectedEnd = getExpectedEnd(record);
-
-            if (current >= expectedEnd) {
-                overtime.push(record);
-            } else {
-                working.push(record);
-            }
+            if (current >= expectedEnd) overtime.push(record);
+            else working.push(record);
         }
     }
 
-    return {
-        working,
-        overtime,
-        finished,
-        total: records.length,
-    };
+    return { working, overtime, finished, total: records.length };
 }
 
 async function getDisplayName(client, userId, fallbackName) {
@@ -152,9 +135,7 @@ async function createPersonLine(client, record, type) {
 }
 
 async function createList(client, records, type) {
-    if (records.length === 0) {
-        return "없음";
-    }
+    if (records.length === 0) return "없음";
 
     const lines = [];
 
@@ -164,9 +145,7 @@ async function createList(client, records, type) {
 
     const shown = lines.join("\n");
 
-    if (records.length <= 8) {
-        return shown;
-    }
+    if (records.length <= 8) return shown;
 
     return `${shown}\n외 ${records.length - 8}명`;
 }
@@ -219,9 +198,7 @@ async function createPanelEmbed(client) {
 }
 
 function createPanelButtons() {
-    const stats = getPanelStats();
-
-    const row1 = new ActionRowBuilder().addComponents(
+    const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId("work_start")
             .setLabel("출근하기")
@@ -235,21 +212,7 @@ function createPanelButtons() {
             .setStyle(ButtonStyle.Danger)
     );
 
-    const row2 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId("work_until")
-            .setLabel("퇴근까지")
-            .setEmoji("⏰")
-            .setStyle(ButtonStyle.Primary),
-
-        new ButtonBuilder()
-            .setCustomId("work_status")
-            .setLabel(`출근현황 ${stats.total}`)
-            .setEmoji("📊")
-            .setStyle(ButtonStyle.Secondary)
-    );
-
-    return [row1, row2];
+    return [row];
 }
 
 async function createOrUpdatePanel(channel) {

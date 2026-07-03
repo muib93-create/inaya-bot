@@ -15,7 +15,7 @@ module.exports = {
         .setName("퇴근")
         .setDescription("오늘 근무를 종료합니다"),
 
-    async execute(interaction) {
+    async execute(interaction, fromButton = false) {
         const userId = interaction.user.id;
         const current = now();
         const workDate = getTodayKST(current);
@@ -26,10 +26,13 @@ module.exports = {
         `).get(userId, workDate);
 
         if (!record) {
-            await interaction.reply({
-                content: "오늘 출근 중인 기록이 없어요. 먼저 `/출근` 해주세요.",
-                components: createWorkButtons(userId),
-            });
+            if (!fromButton) {
+                await interaction.reply({
+                    content: "오늘 출근 중인 기록이 없어요. 먼저 `/출근` 해주세요.",
+                    components: createWorkButtons(userId),
+                    ephemeral: true,
+                });
+            }
             return;
         }
 
@@ -45,8 +48,11 @@ module.exports = {
             WHERE id = ?
         `).run(end.toISOString(), workMinutes, record.id);
 
-        // 근태 패널 갱신
         updatePanel(interaction.client).catch(console.error);
+
+        if (fromButton) {
+            return;
+        }
 
         const startText = formatTimeKST(start);
         const endText = formatTimeKST(end);

@@ -118,32 +118,12 @@ client.once("clientReady", () => {
     }, 60 * 1000);
 });
 
-function makeButtonReplyEphemeral(interaction) {
-    const originalReply = interaction.reply.bind(interaction);
-
-    interaction.reply = async (options) => {
-        if (typeof options === "string") {
-            return originalReply({
-                content: options,
-                ephemeral: true,
-            });
-        }
-
-        return originalReply({
-            ...options,
-            ephemeral: true,
-        });
-    };
-}
-
 client.on("interactionCreate", async interaction => {
     try {
         if (interaction.isButton()) {
             const buttonCommandMap = {
                 work_start: "출근",
                 work_end: "퇴근",
-                work_until: "퇴근까지",
-                work_status: "출근현황",
             };
 
             const commandName = buttonCommandMap[interaction.customId];
@@ -152,9 +132,8 @@ client.on("interactionCreate", async interaction => {
             const command = client.commands.get(commandName);
             if (!command) return;
 
-            makeButtonReplyEphemeral(interaction);
-
-            await command.execute(interaction);
+            await interaction.deferUpdate();
+            await command.execute(interaction, true);
             return;
         }
 
@@ -163,7 +142,7 @@ client.on("interactionCreate", async interaction => {
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
 
-        await command.execute(interaction);
+        await command.execute(interaction, false);
     } catch (err) {
         console.error("명령어 오류:", err);
 
