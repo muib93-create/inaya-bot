@@ -72,11 +72,21 @@ function getTodayRecords() {
 }
 
 function getDockRecords() {
+    const today = getTodayKST(now());
+
+    // 어제 이전 도킹 기록 자동 삭제
+    db.prepare(`
+        DELETE FROM dock_status
+        WHERE dock_date IS NOT NULL
+          AND dock_date <> ?
+    `).run(today);
+
     return db.prepare(`
         SELECT *
         FROM dock_status
+        WHERE dock_date = ?
         ORDER BY started_at ASC
-    `).all();
+    `).all(today);
 }
 
 function getPanelStats() {

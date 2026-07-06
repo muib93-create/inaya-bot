@@ -1,9 +1,7 @@
 const Database = require("better-sqlite3");
 
-// work.db 파일이 없으면 자동 생성
 const db = new Database("work.db");
 
-// 출근 기록 테이블
 db.exec(`
 CREATE TABLE IF NOT EXISTS work_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -20,7 +18,6 @@ CREATE TABLE IF NOT EXISTS work_log (
 );
 `);
 
-// 봇 설정 저장 테이블
 db.exec(`
 CREATE TABLE IF NOT EXISTS bot_settings (
     key TEXT PRIMARY KEY,
@@ -28,7 +25,6 @@ CREATE TABLE IF NOT EXISTS bot_settings (
 );
 `);
 
-// 사용자별 근무시간 설정 테이블
 db.exec(`
 CREATE TABLE IF NOT EXISTS user_work_settings (
     user_id TEXT PRIMARY KEY,
@@ -37,14 +33,21 @@ CREATE TABLE IF NOT EXISTS user_work_settings (
 );
 `);
 
-// 도킹 가능 상태 테이블
 db.exec(`
 CREATE TABLE IF NOT EXISTS dock_status (
     user_id TEXT PRIMARY KEY,
     username TEXT NOT NULL,
+    dock_date TEXT,
     started_at TEXT NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 `);
+
+const dockColumns = db.prepare(`PRAGMA table_info(dock_status)`).all();
+const hasDockDate = dockColumns.some(column => column.name === "dock_date");
+
+if (!hasDockDate) {
+    db.exec(`ALTER TABLE dock_status ADD COLUMN dock_date TEXT;`);
+}
 
 module.exports = db;

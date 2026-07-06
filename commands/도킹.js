@@ -15,7 +15,9 @@ module.exports = {
     async execute(interaction, fromButton = false) {
         const userId = interaction.user.id;
         const username = interaction.member?.displayName ?? interaction.user.username;
-        const today = getTodayKST(now());
+
+        const current = now();
+        const today = getTodayKST(current);
 
         const existing = db.prepare(`
             SELECT *
@@ -41,19 +43,27 @@ module.exports = {
             return;
         }
 
+        // 오늘 근무 기록 삭제
         db.prepare(`
             DELETE FROM work_log
             WHERE user_id = ?
               AND work_date = ?
         `).run(userId, today);
 
+        // 도킹 등록
         db.prepare(`
             INSERT INTO dock_status (
                 user_id,
                 username,
+                dock_date,
                 started_at
-            ) VALUES (?, ?, ?)
-        `).run(userId, username, now().toISOString());
+            ) VALUES (?, ?, ?, ?)
+        `).run(
+            userId,
+            username,
+            today,
+            current.toISOString()
+        );
 
         updatePanel(interaction.client).catch(console.error);
 
