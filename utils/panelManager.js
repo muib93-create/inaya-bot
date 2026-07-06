@@ -81,20 +81,31 @@ function getTodayRecords() {
 }
 
 function getDockRecords() {
+
     const today = getTodayKST(now());
 
     db.prepare(`
+
         DELETE FROM dock_status
+
         WHERE dock_date IS NULL
+
            OR dock_date <> ?
+
     `).run(today);
 
     return db.prepare(`
+
         SELECT *
+
         FROM dock_status
+
         WHERE dock_date = ?
+
         ORDER BY started_at ASC
+
     `).all(today);
+
 }
 
 function getPanelStats() {
