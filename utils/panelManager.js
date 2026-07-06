@@ -40,6 +40,15 @@ function addMinutes(date, minutes) {
     return new Date(date.getTime() + minutes * 60 * 1000);
 }
 
+function createProgressBar(percent) {
+    const totalBlocks = 10;
+    const safePercent = Math.max(0, Math.min(100, percent));
+    const filledBlocks = Math.round((safePercent / 100) * totalBlocks);
+    const emptyBlocks = totalBlocks - filledBlocks;
+
+    return `${"█".repeat(filledBlocks)}${"░".repeat(emptyBlocks)} ${safePercent}%`;
+}
+
 async function getDisplayName(client, userId, fallbackName) {
     try {
         const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -74,11 +83,10 @@ function getTodayRecords() {
 function getDockRecords() {
     const today = getTodayKST(now());
 
-    // 어제 이전 도킹 기록 자동 삭제
     db.prepare(`
         DELETE FROM dock_status
-        WHERE dock_date IS NOT NULL
-          AND dock_date <> ?
+        WHERE dock_date IS NULL
+           OR dock_date <> ?
     `).run(today);
 
     return db.prepare(`
@@ -127,12 +135,20 @@ async function createWorkLine(client, record) {
     const startText = formatTimeKST(start);
     const endText = formatTimeKST(expectedEnd);
 
+    const workedMinutes = Math.max(0, Math.floor((current - start) / 1000 / 60));
+    const progressPercent = Math.min(
+        100,
+        Math.max(0, Math.floor((workedMinutes / targetMinutes) * 100))
+    );
+
+    const progressBar = createProgressBar(progressPercent);
     const diffMinutes = Math.floor((expectedEnd - current) / 1000 / 60);
 
     if (diffMinutes > 0) {
         return [
             `👤 **${displayName}**`,
             `└ ${startText} → ${endText}`,
+            `└ ${progressBar}`,
             `└ 남은 ${formatMinutes(diffMinutes)}`,
         ].join("\n");
     }
@@ -142,6 +158,7 @@ async function createWorkLine(client, record) {
     return [
         `👤 **${displayName}**`,
         `└ ${startText} → ${endText}`,
+        `└ ${createProgressBar(100)}`,
         `└ 초과 ${formatMinutes(overMinutes)}`,
     ].join("\n");
 }
