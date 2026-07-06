@@ -16,6 +16,18 @@ function addMinutes(date, minutes) {
     return new Date(date.getTime() + minutes * 60 * 1000);
 }
 
+async function sendDm(userId, embed, client) {
+    try {
+        const user = await client.users.fetch(userId);
+
+        await user.send({
+            embeds: [embed],
+        });
+    } catch (error) {
+        console.log(`⚠️ ${userId}님에게 DM을 보낼 수 없습니다.`);
+    }
+}
+
 const client = new Client({
     intents: [GatewayIntentBits.Guilds],
 });
@@ -62,11 +74,11 @@ client.once("clientReady", () => {
             let embed = null;
             let nextState = record.notification_state;
 
-            if (diffMinutes <= 10 && diffMinutes > 5 && record.notification_state < 1) {
+            if (diffMinutes <= 5 && diffMinutes > 0 && record.notification_state < 1) {
                 embed = new EmbedBuilder()
                     .setColor(0xFEE75C)
-                    .setTitle("⏰ 퇴근 10분 전")
-                    .setDescription(`<@${record.user_id}> 슬슬 마무리할 시간이에요.`)
+                    .setTitle("⏰ 퇴근까지 5분 남았습니다")
+                    .setDescription("조금만 더 힘내세요!")
                     .addFields({ name: "퇴근 예정", value: endText, inline: true })
                     .setFooter({ text: "이나야 일해라" })
                     .setTimestamp();
@@ -74,11 +86,11 @@ client.once("clientReady", () => {
                 nextState = 1;
             }
 
-            if (diffMinutes <= 5 && diffMinutes > 0 && record.notification_state < 2) {
+            if (diffMinutes <= 0 && diffMinutes > -60 && record.notification_state < 2) {
                 embed = new EmbedBuilder()
-                    .setColor(0xFEE75C)
-                    .setTitle("⏰ 퇴근 5분 전")
-                    .setDescription(`<@${record.user_id}> 거의 다 왔어요. 마무리하세요!`)
+                    .setColor(0x57F287)
+                    .setTitle("🎉 퇴근 시간입니다")
+                    .setDescription("오늘도 고생하셨습니다.\n퇴근 버튼을 눌러 근무를 종료해주세요.")
                     .addFields({ name: "퇴근 예정", value: endText, inline: true })
                     .setFooter({ text: "이나야 일해라" })
                     .setTimestamp();
@@ -86,25 +98,8 @@ client.once("clientReady", () => {
                 nextState = 2;
             }
 
-            if (diffMinutes <= 0 && diffMinutes > -60 && record.notification_state < 3) {
-                embed = new EmbedBuilder()
-                    .setColor(0xED4245)
-                    .setTitle("🔴 퇴근 시간이 지났습니다")
-                    .setDescription(`<@${record.user_id}> /퇴근 을 눌러주세요.`)
-                    .addFields({ name: "퇴근 예정", value: endText, inline: true })
-                    .setFooter({ text: "이나야 일해라" })
-                    .setTimestamp();
-
-                nextState = 3;
-            }
-
             if (embed && nextState !== record.notification_state) {
-                const channel = await client.channels.fetch(process.env.NOTIFY_CHANNEL_ID);
-
-                await channel.send({
-                    content: `<@${record.user_id}>`,
-                    embeds: [embed],
-                });
+                await sendDm(record.user_id, embed, client);
 
                 db.prepare(`
                     UPDATE work_log
