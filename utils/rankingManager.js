@@ -34,13 +34,20 @@ function getTodayStartRecords() {
     const records = db.prepare(`
         SELECT *
         FROM work_log
-        WHERE work_date = ?
         ORDER BY start_time ASC
-    `).all(today);
+    `).all();
+
+    const todayRecords = records.filter(record => {
+        if (!record.start_time) return false;
+
+        const startDateKST = getTodayKST(new Date(record.start_time));
+
+        return record.work_date === today || startDateKST === today;
+    });
 
     const firstByUser = new Map();
 
-    for (const record of records) {
+    for (const record of todayRecords) {
         if (!firstByUser.has(record.user_id)) {
             firstByUser.set(record.user_id, record);
         }
@@ -67,6 +74,7 @@ function createRankLine(record, index, firstStart) {
     }
 
     const diffMinutes = Math.max(0, Math.floor((start - firstStart) / 1000 / 60));
+
     return `${getMedal(index)} **${record.username}**　${startText} (+${formatMinutes(diffMinutes)})`;
 }
 
