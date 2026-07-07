@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const db = require("../database");
 const { createWorkButtons } = require("../utils/workButtons");
 const { updatePanel } = require("../utils/panelManager");
+const { updateRankingPanel } = require("../utils/rankingManager");
 
 const {
     now,
@@ -69,6 +70,7 @@ module.exports = {
         `).run(userId, username, workDate, startTime);
 
         updatePanel(interaction.client).catch(console.error);
+        updateRankingPanel(interaction.client).catch(console.error);
 
         if (fromButton) {
             return;

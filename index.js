@@ -2,6 +2,7 @@ require("dotenv").config();
 
 const db = require("./database");
 const { updatePanel } = require("./utils/panelManager");
+const { updateRankingPanel } = require("./utils/rankingManager");
 const { getUserWorkMinutes } = require("./utils/workConfig");
 const { Client, GatewayIntentBits, Collection, EmbedBuilder } = require("discord.js");
 const fs = require("fs");
@@ -54,6 +55,7 @@ client.once("clientReady", () => {
     console.log("⏰ 자동 퇴근 알림 시스템 시작!");
 
     updatePanel(client).catch(console.error);
+    updateRankingPanel(client).catch(console.error);
 
     setInterval(async () => {
         const records = db.prepare(`
@@ -110,6 +112,7 @@ client.once("clientReady", () => {
         }
 
         await updatePanel(client).catch(console.error);
+        await updateRankingPanel(client).catch(console.error);
     }, 60 * 1000);
 });
 
