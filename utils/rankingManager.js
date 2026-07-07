@@ -28,34 +28,103 @@ function setSetting(key, value) {
     `).run(key, value);
 }
 
-function getTodayStartRecords() {
-    const today = getTodayKST(now());
-
-    const records = db.prepare(`
+function getAllWorkRecords() {
+    return db.prepare(`
         SELECT *
         FROM work_log
+        WHERE start_time IS NOT NULL
         ORDER BY start_time ASC
     `).all();
+}
 
-    const todayRecords = records.filter(record => {
-        if (!record.start_time) return false;
+function isTodayRecord(record, today) {
+    const startDateKST = getTodayKST(new Date(record.start_time));
+    return record.work_date === today || startDateKST === today;
+}
 
-        const startDateKST = getTodayKST(new Date(record.start_time));
-
-        return record.work_date === today || startDateKST === today;
-    });
+function getTodayStartRecords() {
+    const today = getTodayKST(now());
+    const records = getAllWorkRecords().filter(record => isTodayRecord(record, today));
 
     const firstByUser = new Map();
 
-    for (const record of todayRecords) {
+    for (const record of records) {
         if (!firstByUser.has(record.user_id)) {
             firstByUser.set(record.user_id, record);
         }
     }
 
     return Array.from(firstByUser.values())
-        .filter(record => record.start_time)
         .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+}
+
+function getTodayTotalWorkMinutes() {
+    const today = getTodayKST(now());
+    const current = now();
+    const records = getAllWorkRecords().filter(record => isTodayRecord(record, today));
+
+    let totalMinutes = 0;
+
+    for (const record of records) {
+        if (record.status === "finished") {
+            totalMinutes += Number(record.work_minutes || 0);
+            continue;
+        }
+
+        if (record.status === "working") {
+            const start = new Date(record.start_time);
+            totalMinutes += Math.max(0, Math.floor((current - start) / 1000 / 60));
+        }
+    }
+
+    return totalMinutes;
+}
+
+function getThisMonthStats() {
+    const current = now();
+    const year = current.getFullYear();
+    const month = String(current.getMonth() + 1).padStart(2, "0");
+    const monthPrefix = `${year}-${month}`;
+
+    const records = getAllWorkRecords().filter(record => {
+        const startDateKST = getTodayKST(new Date(record.start_time));
+        return record.work_date?.startsWith(monthPrefix) || startDateKST.startsWith(monthPrefix);
+    });
+
+    const statsByUser = new Map();
+
+    for (const record of records) {
+        if (!statsByUser.has(record.user_id)) {
+            statsByUser.set(record.user_id, {
+                user_id: record.user_id,
+                username: record.username,
+                days: new Set(),
+                totalMinutes: 0,
+            });
+        }
+
+        const stat = statsByUser.get(record.user_id);
+        const workDate = record.work_date || getTodayKST(new Date(record.start_time));
+
+        stat.days.add(workDate);
+
+        if (record.status === "finished") {
+            stat.totalMinutes += Number(record.work_minutes || 0);
+        }
+
+        if (record.status === "working") {
+            const start = new Date(record.start_time);
+            stat.totalMinutes += Math.max(0, Math.floor((current - start) / 1000 / 60));
+        }
+    }
+
+    return Array.from(statsByUser.values())
+        .map(stat => ({
+            ...stat,
+            workDays: stat.days.size,
+        }))
+        .sort((a, b) => b.totalMinutes - a.totalMinutes)
+        .slice(0, 5);
 }
 
 function getMedal(index) {
@@ -74,13 +143,29 @@ function createRankLine(record, index, firstStart) {
     }
 
     const diffMinutes = Math.max(0, Math.floor((start - firstStart) / 1000 / 60));
-
     return `${getMedal(index)} **${record.username}**　${startText} (+${formatMinutes(diffMinutes)})`;
+}
+
+function createMonthlyStatsText() {
+    const stats = getThisMonthStats();
+
+    if (stats.length === 0) {
+        return "아직 이번 달 근무 기록이 없어요.";
+    }
+
+    return stats.map((stat, index) => {
+        return [
+            `${getMedal(index)} **${stat.username}**`,
+            `└ 출근 ${stat.workDays}일 · 총 ${formatMinutes(stat.totalMinutes)}`,
+        ].join("\n");
+    }).join("\n\n");
 }
 
 function createRankingEmbed() {
     const records = getTodayStartRecords();
     const updatedAt = formatTimeKST(now());
+    const totalWorkMinutes = getTodayTotalWorkMinutes();
+    const monthlyStatsText = createMonthlyStatsText();
 
     if (records.length === 0) {
         return new EmbedBuilder()
@@ -93,10 +178,16 @@ function createRankingEmbed() {
                     LINE,
                     "",
                     "첫 출근자가 오늘의 얼리버드가 됩니다.",
+                    "",
+                    LINE,
+                    "",
+                    "📅 **이번 달 근무 통계**",
+                    "",
+                    monthlyStatsText,
                 ].join("\n")
             )
             .setFooter({
-                text: `👥 오늘 출근 0명 · 마지막 갱신 ${updatedAt}`,
+                text: `👥 오늘 출근 0명 · ⏱️ 오늘 누적근무 ${formatMinutes(totalWorkMinutes)} · 마지막 갱신 ${updatedAt}`,
             })
             .setTimestamp();
     }
@@ -124,10 +215,16 @@ function createRankingEmbed() {
                 rankingLines,
                 "",
                 LINE,
+                "",
+                "📅 **이번 달 근무 통계**",
+                "",
+                monthlyStatsText,
+                "",
+                LINE,
             ].join("\n")
         )
         .setFooter({
-            text: `👥 오늘 출근 ${records.length}명 · 마지막 갱신 ${updatedAt}`,
+            text: `👥 오늘 출근 ${records.length}명 · ⏱️ 오늘 누적근무 ${formatMinutes(totalWorkMinutes)} · 마지막 갱신 ${updatedAt}`,
         })
         .setTimestamp();
 }
