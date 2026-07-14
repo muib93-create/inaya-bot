@@ -37,14 +37,26 @@ function getAllWorkRecords() {
     `).all();
 }
 
+function getRecordDateKST(record) {
+    if (record.work_date) {
+        return record.work_date;
+    }
+
+    return getTodayKST(new Date(record.start_time));
+}
+
 function isTodayRecord(record, today) {
+    const recordDate = getRecordDateKST(record);
     const startDateKST = getTodayKST(new Date(record.start_time));
-    return record.work_date === today || startDateKST === today;
+
+    return recordDate === today || startDateKST === today;
 }
 
 function getTodayStartRecords() {
     const today = getTodayKST(now());
-    const records = getAllWorkRecords().filter(record => isTodayRecord(record, today));
+
+    const records = getAllWorkRecords()
+        .filter(record => isTodayRecord(record, today));
 
     const firstByUser = new Map();
 
@@ -59,9 +71,11 @@ function getTodayStartRecords() {
 }
 
 function getTodayTotalWorkMinutes() {
-    const today = getTodayKST(now());
     const current = now();
-    const records = getAllWorkRecords().filter(record => isTodayRecord(record, today));
+    const today = getTodayKST(current);
+
+    const records = getAllWorkRecords()
+        .filter(record => isTodayRecord(record, today));
 
     let totalMinutes = 0;
 
@@ -73,7 +87,9 @@ function getTodayTotalWorkMinutes() {
 
         if (record.status === "working") {
             const start = new Date(record.start_time);
-            totalMinutes += Math.max(0, Math.floor((current - start) / 1000 / 60));
+            const elapsedMinutes = Math.floor((current - start) / 1000 / 60);
+
+            totalMinutes += Math.max(0, elapsedMinutes);
         }
     }
 
@@ -82,13 +98,17 @@ function getTodayTotalWorkMinutes() {
 
 function getThisMonthStats() {
     const current = now();
-    const year = current.getFullYear();
-    const month = String(current.getMonth() + 1).padStart(2, "0");
-    const monthPrefix = `${year}-${month}`;
+    const today = getTodayKST(current);
+    const monthPrefix = today.slice(0, 7);
 
     const records = getAllWorkRecords().filter(record => {
+        const recordDate = getRecordDateKST(record);
         const startDateKST = getTodayKST(new Date(record.start_time));
-        return record.work_date?.startsWith(monthPrefix) || startDateKST.startsWith(monthPrefix);
+
+        return (
+            recordDate.startsWith(monthPrefix) ||
+            startDateKST.startsWith(monthPrefix)
+        );
     });
 
     const statsByUser = new Map();
@@ -96,7 +116,7 @@ function getThisMonthStats() {
     for (const record of records) {
         if (!statsByUser.has(record.user_id)) {
             statsByUser.set(record.user_id, {
-                user_id: record.user_id,
+                userId: record.user_id,
                 username: record.username,
                 days: new Set(),
                 totalMinutes: 0,
@@ -104,26 +124,42 @@ function getThisMonthStats() {
         }
 
         const stat = statsByUser.get(record.user_id);
-        const workDate = record.work_date || getTodayKST(new Date(record.start_time));
+        const workDate = getRecordDateKST(record);
 
         stat.days.add(workDate);
 
         if (record.status === "finished") {
             stat.totalMinutes += Number(record.work_minutes || 0);
+            continue;
         }
 
-        if (record.status === "working") {
+        /*
+         * 과거 날짜에 working으로 남아 있는 비정상 기록은 제외한다.
+         * 오늘 실제로 근무 중인 기록만 현재 시각까지 계산한다.
+         */
+        if (record.status === "working" && workDate === today) {
             const start = new Date(record.start_time);
-            stat.totalMinutes += Math.max(0, Math.floor((current - start) / 1000 / 60));
+            const elapsedMinutes = Math.floor((current - start) / 1000 / 60);
+
+            stat.totalMinutes += Math.max(0, elapsedMinutes);
         }
     }
 
     return Array.from(statsByUser.values())
         .map(stat => ({
-            ...stat,
+            userId: stat.userId,
+            username: stat.username,
             workDays: stat.days.size,
+            totalMinutes: stat.totalMinutes,
         }))
-        .sort((a, b) => b.totalMinutes - a.totalMinutes)
+        .filter(stat => stat.totalMinutes > 0)
+        .sort((a, b) => {
+            if (b.totalMinutes !== a.totalMinutes) {
+                return b.totalMinutes - a.totalMinutes;
+            }
+
+            return b.workDays - a.workDays;
+        })
         .slice(0, 5);
 }
 
@@ -131,6 +167,7 @@ function getMedal(index) {
     if (index === 0) return "🥇";
     if (index === 1) return "🥈";
     if (index === 2) return "🥉";
+
     return `${index + 1}위`;
 }
 
@@ -142,7 +179,11 @@ function createRankLine(record, index, firstStart) {
         return `${getMedal(index)} **${record.username}**　${startText}`;
     }
 
-    const diffMinutes = Math.max(0, Math.floor((start - firstStart) / 1000 / 60));
+    const diffMinutes = Math.max(
+        0,
+        Math.floor((start - firstStart) / 1000 / 60)
+    );
+
     return `${getMedal(index)} **${record.username}**　${startText} (+${formatMinutes(diffMinutes)})`;
 }
 
@@ -150,21 +191,25 @@ function createMonthlyStatsText() {
     const stats = getThisMonthStats();
 
     if (stats.length === 0) {
-        return "아직 이번 달 근무 기록이 없어요.";
+        return "아직 이번 달 완료된 근무 기록이 없어요.";
     }
 
-    return stats.map((stat, index) => {
-        return [
-            `${getMedal(index)} **${stat.username}**`,
-            `└ 출근 ${stat.workDays}일 · 총 ${formatMinutes(stat.totalMinutes)}`,
-        ].join("\n");
-    }).join("\n\n");
+    return stats
+        .map((stat, index) => {
+            return [
+                `${getMedal(index)} **${stat.username}**`,
+                `└ 출근 ${stat.workDays}일 · 총 ${formatMinutes(stat.totalMinutes)}`,
+            ].join("\n");
+        })
+        .join("\n\n");
 }
 
 function createRankingEmbed() {
     const records = getTodayStartRecords();
     const updatedAt = formatTimeKST(now());
+
     const totalWorkMinutes = getTodayTotalWorkMinutes();
+    const totalWorkText = formatMinutes(totalWorkMinutes);
     const monthlyStatsText = createMonthlyStatsText();
 
     if (records.length === 0) {
@@ -187,7 +232,7 @@ function createRankingEmbed() {
                 ].join("\n")
             )
             .setFooter({
-                text: `👥 오늘 출근 0명 · ⏱️ 오늘 누적근무 ${formatMinutes(totalWorkMinutes)} · 마지막 갱신 ${updatedAt}`,
+                text: `👥 오늘 출근 0명 · ⏱️ 오늘 누적근무 ${totalWorkText} · 마지막 갱신 ${updatedAt}`,
             })
             .setTimestamp();
     }
@@ -197,7 +242,9 @@ function createRankingEmbed() {
 
     const rankingLines = records
         .slice(0, 10)
-        .map((record, index) => createRankLine(record, index, firstStart))
+        .map((record, index) => {
+            return createRankLine(record, index, firstStart);
+        })
         .join("\n");
 
     return new EmbedBuilder()
@@ -224,7 +271,7 @@ function createRankingEmbed() {
             ].join("\n")
         )
         .setFooter({
-            text: `👥 오늘 출근 ${records.length}명 · ⏱️ 오늘 누적근무 ${formatMinutes(totalWorkMinutes)} · 마지막 갱신 ${updatedAt}`,
+            text: `👥 오늘 출근 ${records.length}명 · ⏱️ 오늘 누적근무 ${totalWorkText} · 마지막 갱신 ${updatedAt}`,
         })
         .setTimestamp();
 }
@@ -239,8 +286,11 @@ async function createOrUpdateRankingPanel(channel) {
 
     if (savedChannelId && savedMessageId) {
         try {
-            const savedChannel = await channel.client.channels.fetch(savedChannelId);
-            const savedMessage = await savedChannel.messages.fetch(savedMessageId);
+            const savedChannel =
+                await channel.client.channels.fetch(savedChannelId);
+
+            const savedMessage =
+                await savedChannel.messages.fetch(savedMessageId);
 
             await savedMessage.edit(payload);
             return savedMessage;
@@ -261,7 +311,9 @@ async function updateRankingPanel(client) {
     const channelId = getSetting("ranking_panel_channel_id");
     const messageId = getSetting("ranking_panel_message_id");
 
-    if (!channelId || !messageId) return;
+    if (!channelId || !messageId) {
+        return;
+    }
 
     try {
         const channel = await client.channels.fetch(channelId);
