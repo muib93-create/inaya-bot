@@ -9,6 +9,7 @@ const {
 } = require("./time");
 
 const LINE = "━━━━━━━━━━━━━━━━━━━━";
+const MAX_DAILY_WORK_MINUTES = 24 * 60;
 
 function getSetting(key) {
     const row = db.prepare(`
@@ -52,6 +53,35 @@ function isTodayRecord(record, today) {
     return recordDate === today || startDateKST === today;
 }
 
+function getSafeFinishedMinutes(record) {
+    const savedMinutes = Number(record.work_minutes || 0);
+
+    if (
+        !Number.isFinite(savedMinutes) ||
+        savedMinutes <= 0 ||
+        savedMinutes > MAX_DAILY_WORK_MINUTES
+    ) {
+        return 0;
+    }
+
+    return savedMinutes;
+}
+
+function getSafeWorkingMinutes(record, current) {
+    const start = new Date(record.start_time);
+
+    if (Number.isNaN(start.getTime())) {
+        return 0;
+    }
+
+    const elapsedMinutes = Math.floor((current - start) / 1000 / 60);
+
+    return Math.max(
+        0,
+        Math.min(elapsedMinutes, MAX_DAILY_WORK_MINUTES)
+    );
+}
+
 function getTodayStartRecords() {
     const today = getTodayKST(now());
 
@@ -81,15 +111,12 @@ function getTodayTotalWorkMinutes() {
 
     for (const record of records) {
         if (record.status === "finished") {
-            totalMinutes += Number(record.work_minutes || 0);
+            totalMinutes += getSafeFinishedMinutes(record);
             continue;
         }
 
         if (record.status === "working") {
-            const start = new Date(record.start_time);
-            const elapsedMinutes = Math.floor((current - start) / 1000 / 60);
-
-            totalMinutes += Math.max(0, elapsedMinutes);
+            totalMinutes += getSafeWorkingMinutes(record, current);
         }
     }
 
@@ -114,6 +141,24 @@ function getThisMonthStats() {
     const statsByUser = new Map();
 
     for (const record of records) {
+        const workDate = getRecordDateKST(record);
+
+        let validMinutes = 0;
+
+        if (record.status === "finished") {
+            validMinutes = getSafeFinishedMinutes(record);
+        } else if (
+            record.status === "working" &&
+            workDate === today
+        ) {
+            validMinutes = getSafeWorkingMinutes(record, current);
+        }
+
+        // 비정상 기록이나 과거 미퇴근 기록은 통계에서 제외
+        if (validMinutes <= 0) {
+            continue;
+        }
+
         if (!statsByUser.has(record.user_id)) {
             statsByUser.set(record.user_id, {
                 userId: record.user_id,
@@ -124,25 +169,10 @@ function getThisMonthStats() {
         }
 
         const stat = statsByUser.get(record.user_id);
-        const workDate = getRecordDateKST(record);
 
+        stat.username = record.username;
         stat.days.add(workDate);
-
-        if (record.status === "finished") {
-            stat.totalMinutes += Number(record.work_minutes || 0);
-            continue;
-        }
-
-        /*
-         * 과거 날짜에 working으로 남아 있는 비정상 기록은 제외한다.
-         * 오늘 실제로 근무 중인 기록만 현재 시각까지 계산한다.
-         */
-        if (record.status === "working" && workDate === today) {
-            const start = new Date(record.start_time);
-            const elapsedMinutes = Math.floor((current - start) / 1000 / 60);
-
-            stat.totalMinutes += Math.max(0, elapsedMinutes);
-        }
+        stat.totalMinutes += validMinutes;
     }
 
     return Array.from(statsByUser.values())
@@ -152,7 +182,6 @@ function getThisMonthStats() {
             workDays: stat.days.size,
             totalMinutes: stat.totalMinutes,
         }))
-        .filter(stat => stat.totalMinutes > 0)
         .sort((a, b) => {
             if (b.totalMinutes !== a.totalMinutes) {
                 return b.totalMinutes - a.totalMinutes;
@@ -191,7 +220,7 @@ function createMonthlyStatsText() {
     const stats = getThisMonthStats();
 
     if (stats.length === 0) {
-        return "아직 이번 달 완료된 근무 기록이 없어요.";
+        return "아직 이번 달 정상 근무 기록이 없어요.";
     }
 
     return stats
